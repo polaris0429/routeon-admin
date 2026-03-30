@@ -41,7 +41,7 @@
       </div>
 
       <div class="form-group">
-        <label>비밀번호 (대/소문자, 숫자 포함 12자 이상)</label>
+        <label>비밀번호 (대/소문자, 숫자, 특수기호 포함 10자 이상)</label>
         <input type="password" id="password" required placeholder="비밀번호 입력">
         <div id="pwd-error" class="error-msg">비밀번호 규칙을 확인해주세요.</div>
       </div>
@@ -67,7 +67,6 @@
   </div>
 
   <script>
-    // 💡 조직코드 자동 생성기 (RT-영문/숫자 6자리)
     function generateOrgCode() {
       const randomStr = Math.random().toString(36).substring(2, 8).toUpperCase();
       document.getElementById('orgCode').value = `RT-${randomStr}`;
@@ -87,8 +86,10 @@
       pwdError.style.display = 'none';
       pwdMatchError.style.display = 'none';
 
-      // 💡 비밀번호 유효성 검사 (대문자, 소문자, 숫자 각각 1개 이상 + 총 12자 이상)
-      const pwdRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{12,}$/;
+      // 💡 [핵심] 비밀번호 유효성 검사 정규식 수정
+      // 대문자(?=.*[A-Z]), 소문자(?=.*[a-z]), 숫자(?=.*\d), 특수기호(?=.*[^a-zA-Z0-9]) 각각 최소 1개 이상 + 총 길이 10자 이상(.{10,})
+      const pwdRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^a-zA-Z0-9]).{10,}$/;
+      
       if (!pwdRegex.test(password)) {
         pwdError.style.display = 'block';
         return;
@@ -104,7 +105,6 @@
         return;
       }
 
-      // 서버로 가입 요청 보내기
       const res = await fetch('/api/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -114,7 +114,7 @@
       const data = await res.json();
       if (data.success) {
         alert(`가입 완료! 발급된 조직코드 [${orgCode}]를 기사님들에게 공유해주세요.`);
-        window.location.href = '/login.html'; // 로그인 창으로 이동
+        window.location.href = '/login.html'; 
       } else {
         alert(data.message);
       }
