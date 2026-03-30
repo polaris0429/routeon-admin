@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>루트온 관리자 - 회원가입</title>
+  <style>
+    body { margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; height: 100vh; background: #f4f7f6; font-family: 'Malgun Gothic', sans-serif; }
+    .auth-card { background: #fff; padding: 40px; border-radius: 12px; box-shadow: 0 8px 20px rgba(0,0,0,0.1); width: 380px; }
+    .logo-img { height: 40px; margin-bottom: 15px; display: block; margin-left: auto; margin-right: auto; }
+    h2 { margin: 0 0 20px 0; color: #333; text-align: center; }
+    .form-group { margin-bottom: 15px; }
+    label { display: block; margin-bottom: 5px; font-size: 13px; color: #666; font-weight: bold; }
+    input { width: 100%; box-sizing: border-box; padding: 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }
+    input:focus { border-color: #FFE812; outline: none; }
+    
+    .org-group { display: flex; gap: 8px; }
+    .btn-generate { background: #333; color: #fff; border: none; border-radius: 6px; padding: 0 15px; cursor: pointer; font-size: 13px; white-space: nowrap; }
+    
+    .btn-submit { width: 100%; padding: 14px; background: #FFE812; color: #333; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; margin-top: 10px; }
+    .btn-submit:hover { background: #e5cf00; }
+    .link { display: block; margin-top: 15px; font-size: 14px; color: #555; text-decoration: none; text-align: center; }
+    .link:hover { text-decoration: underline; color: #333; }
+    .error-msg { color: #e74c3c; font-size: 12px; margin-top: 5px; display: none; }
+  </style>
+</head>
+<body>
+
+  <div class="auth-card">
+    <img src="./routeon_logo.png" alt="RouteOn Logo" class="logo-img">
+    <h2>관리자 가입</h2>
+    
+    <form id="registerForm">
+      <div class="form-group">
+        <label>이메일 주소</label>
+        <input type="email" id="email" required placeholder="login@routeon.com">
+      </div>
+
+      <div class="form-group">
+        <label>휴대전화 번호 (나중에 인증 추가 예정)</label>
+        <input type="tel" id="phone" required placeholder="010-0000-0000">
+      </div>
+
+      <div class="form-group">
+        <label>비밀번호 (대/소문자, 숫자 포함 12자 이상)</label>
+        <input type="password" id="password" required placeholder="비밀번호 입력">
+        <div id="pwd-error" class="error-msg">비밀번호 규칙을 확인해주세요.</div>
+      </div>
+
+      <div class="form-group">
+        <label>비밀번호 확인</label>
+        <input type="password" id="passwordConfirm" required placeholder="비밀번호 다시 입력">
+        <div id="pwd-match-error" class="error-msg">비밀번호가 일치하지 않습니다.</div>
+      </div>
+
+      <div class="form-group">
+        <label>조직 코드 (기사 가입용)</label>
+        <div class="org-group">
+          <input type="text" id="orgCode" required readonly placeholder="버튼을 눌러 생성하세요" style="background:#f1f3f5;">
+          <button type="button" class="btn-generate" onclick="generateOrgCode()">코드 발급</button>
+        </div>
+      </div>
+
+      <button type="submit" class="btn-submit">가입 완료하기</button>
+    </form>
+    
+    <a href="/login.html" class="link">이미 계정이 있으신가요? 로그인</a>
+  </div>
+
+  <script>
+    // 💡 조직코드 자동 생성기 (RT-영문/숫자 6자리)
+    function generateOrgCode() {
+      const randomStr = Math.random().toString(36).substring(2, 8).toUpperCase();
+      document.getElementById('orgCode').value = `RT-${randomStr}`;
+    }
+
+    document.getElementById('registerForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const email = document.getElementById('email').value;
+      const phone = document.getElementById('phone').value;
+      const password = document.getElementById('password').value;
+      const passwordConfirm = document.getElementById('passwordConfirm').value;
+      const orgCode = document.getElementById('orgCode').value;
+
+      const pwdError = document.getElementById('pwd-error');
+      const pwdMatchError = document.getElementById('pwd-match-error');
+      pwdError.style.display = 'none';
+      pwdMatchError.style.display = 'none';
+
+      // 💡 비밀번호 유효성 검사 (대문자, 소문자, 숫자 각각 1개 이상 + 총 12자 이상)
+      const pwdRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{12,}$/;
+      if (!pwdRegex.test(password)) {
+        pwdError.style.display = 'block';
+        return;
+      }
+
+      if (password !== passwordConfirm) {
+        pwdMatchError.style.display = 'block';
+        return;
+      }
+
+      if (!orgCode) {
+        alert('조직 코드를 발급받아 주세요!');
+        return;
+      }
+
+      // 서버로 가입 요청 보내기
+      const res = await fetch('/api/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, phone, password, orgCode })
+      });
+      
+      const data = await res.json();
+      if (data.success) {
+        alert(`가입 완료! 발급된 조직코드 [${orgCode}]를 기사님들에게 공유해주세요.`);
+        window.location.href = '/login.html'; // 로그인 창으로 이동
+      } else {
+        alert(data.message);
+      }
+    });
+  </script>
+</body>
+</html>

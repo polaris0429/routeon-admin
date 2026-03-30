@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>루트온 관리자 관제 시스템</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <script type="text/javascript" src="//dapi.kakao.com/v2/maps/sdk.js?appkey=362ecd9f0f9f8cd9b1a4840ae84c6021"></script>
+  <style>
+    body { margin: 0; padding: 0; display: flex; height: 100vh; font-family: 'Malgun Gothic', sans-serif; background: #f4f7f6; overflow: hidden; }
+    
+    /* 💡 왼쪽 패널 레이아웃 & 너비 증가 (380px), 접기 애니메이션 적용 */
+    .left-panel { 
+      width: 380px; 
+      background: #fff; 
+      border-right: 1px solid #e0e0e0; 
+      display: flex; 
+      flex-direction: column; 
+      box-shadow: 2px 0 10px rgba(0,0,0,0.05); 
+      z-index: 10; 
+      transition: margin-left 0.3s ease; /* 부드러운 슬라이딩 효과 */
+    }
+    
+    /* 패널이 접혔을 때의 클래스 (너비만큼 왼쪽으로 숨김) */
+    .left-panel.collapsed {
+      margin-left: -380px;
+    }
+
+    /* 💡 헤더 영역 줄바꿈 방지 */
+    .admin-header { padding: 25px 25px 15px 25px; display: flex; align-items: center; gap: 10px; border-bottom: 2px solid #FFE812; white-space: nowrap; }
+    .admin-header .logo-img { height: 40px; width: auto; border-radius: 6px; }
+    .admin-header .title-text { font-size: 20px; font-weight: bold; color: #333; }
+    
+    #driver-list { flex-grow: 1; overflow-y: auto; padding: 15px 25px; } 
+    
+    .left-footer { padding: 20px 25px; border-top: 1px solid #eee; background: #fafafa; display: flex; gap: 10px; }
+    .left-footer .btn { flex: 1; font-size: 14px; padding: 12px; }
+
+    .map-container { flex-grow: 1; position: relative; }
+    #map { width: 100%; height: 100%; }
+
+    /* 💡 패널 접기/펴기 토글 버튼 (지도 영역 좌측 상단에 고정) */
+    .panel-toggle-btn {
+      position: absolute;
+      top: 20px;
+      left: 10px;
+      z-index: 20;
+      background: #fff;
+      border: 1px solid #ccc;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      cursor: pointer;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-size: 16px;
+      transition: 0.2s;
+    }
+    .panel-toggle-btn:hover { background: #f4f4f4; }
+
+    .right-panel { width: 380px; background: #fff; border-left: 1px solid #e0e0e0; padding: 25px; display: none; flex-direction: column; overflow-y: auto; box-shadow: -2px 0 10px rgba(0,0,0,0.05); z-index: 10; }
+    
+    h2, h3 { margin-top: 25px; color: #555; }
+    .driver-card { background: #f8f9fa; padding: 18px; margin-bottom: 12px; border-radius: 10px; border: 1px solid #eee; cursor: pointer; transition: 0.3s; }
+    .driver-card:hover { transform: translateY(-3px); box-shadow: 0 5px 15px rgba(0,0,0,0.1); border-color: #FFE812; }
+    .driver-card.active { border-color: #FFE812; background: #fffde8; }
+    .status-badge { display: inline-block; padding: 4px 10px; border-radius: 15px; font-size: 12px; color: #fff; font-weight: bold; margin-left: 5px; }
+    .bg-green { background: #2ecc71; } .bg-orange { background: #e67e22; } .bg-red { background: #e74c3c; }
+    
+    .btn { padding: 10px 15px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; color: #fff; transition: 0.2s; }
+    .btn:hover { opacity: 0.9; }
+    .btn-approve { background: #3498db; width: 100%; margin-top: 12px; font-size: 14px; }
+    .btn-delete { background: #e74c3c; padding: 5px 10px; font-size: 12px; }
+    .btn-setting { background: #34495e; }
+    .btn-add { background: #f1c40f; color: #333; margin-top: 10px; width: 100%; font-size: 15px; }
+    
+    .route-item { display: flex; justify-content: space-between; align-items: center; background: #f1f3f5; padding: 12px; margin-bottom: 8px; border-radius: 6px; border: 1px solid #eee; }
+    .route-item small { color: #7f8c8d; display: block; margin-top: 3px; }
+    input[type="text"] { padding: 10px; margin-bottom: 8px; width: calc(100% - 22px); border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }
+    hr { border: 0; border-top: 1px solid #eee; margin: 20px 0; }
+
+    .custom-app-marker { position: relative; padding: 8px 12px; background: #fff; border: 2px solid #333; border-radius: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.2); transition: 0.1s; cursor: pointer; }
+    .custom-app-marker:hover { transform: scale(1.1) translateY(-5px); border-color: #FFE812; z-index: 100; }
+    .custom-app-marker.active { border-color: #FFE812; background: #FFE812; }
+    .custom-app-marker .content { display: flex; align-items: center; gap: 6px; }
+    .custom-app-marker .icon { font-size: 18px; }
+    .custom-app-marker .name { font-weight: bold; color: #333; font-size: 14px; white-space: nowrap; }
+    .custom-app-marker:after { content: ''; position: absolute; border-style: solid; border-width: 10px 8px 0; border-color: #333 transparent transparent; display: block; width: 0; z-index: 1; bottom: -10px; left: 50%; transform: translateX(-50%); }
+    .custom-app-marker.active:after { border-color: #FFE812 transparent transparent; }
+
+    .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: none; justify-content: center; align-items: center; z-index: 1000; }
+    .modal-content { background: #fff; width: 600px; max-height: 80vh; border-radius: 12px; padding: 30px; overflow-y: auto; box-shadow: 0 10px 30px rgba(0,0,0,0.2); }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #FFE812; padding-bottom: 10px; margin-bottom: 20px; }
+    .modal-header h2 { margin: 0; }
+    .setting-group { background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #eee; }
+    .setting-group label { display: block; font-weight: bold; margin-bottom: 10px; color: #333; }
+    
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { padding: 10px; text-align: left; border-bottom: 1px solid #ddd; font-size: 14px; }
+    th { background: #f1f3f5; }
+    .btn-sm { padding: 4px 8px; font-size: 12px; margin-right: 4px; }
+    .btn-warn { background: #e67e22; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
+  </style>
+</head>
+<body>
+
+  <div class="left-panel" id="left-panel">
+    <div class="admin-header">
+      <img src="./routeon_logo.png" alt="RouteOn Logo" class="logo-img">
+      <span class="title-text">관리자페이지</span>
+    </div>
+    
+    <div id="driver-list"></div>
+
+    <div class="left-footer">
+      <button class="btn btn-setting" onclick="openSettings()">⚙ 설정 및 관리</button>
+      <button class="btn btn-delete" onclick="logout()">로그아웃</button>
+    </div>
+  </div>
+
+  <div class="map-container">
+    <button class="panel-toggle-btn" id="toggle-btn" onclick="togglePanel()" title="메뉴 접기">◀</button>
+    <div id="map"></div>
+  </div>
+
+  <div class="right-panel" id="right-panel">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <h2 id="detail-name" style="margin:0; border:none; font-size:20px; color:#333;">기사 이름</h2>
+      <button onclick="hideRightPanel()" style="background:none; border:none; font-size:24px; cursor:pointer; color:#999; line-height:1;">&times;</button>
+    </div>
+    <hr style="margin: 15px 0;">
+    <p>⏱ 오늘 운행: <strong id="detail-drive" style="color:#2ecc71;"></strong></p>
+    <p>☕ 총 휴식: <strong id="detail-rest" style="color:#e67e22;"></strong></p>
+    <p>🚨 누적 경고: <strong id="detail-warnings" style="color:#e74c3c;"></strong></p>
+    <hr>
+    <h3>📍 현재 배차(운행) 목록</h3>
+    <div id="route-list"></div>
+    
+    <div style="margin-top: 25px; background: #fcfcfc; padding: 18px; border-radius: 10px; border: 1px solid #eee;">
+      <h4 style="margin-top:0; color:#333;">+ 새 목적지 추가 (원격 배차)</h4>
+      <input type="text" id="new-dest-name" placeholder="목적지 이름 (예: 평택항 상차장)">
+      <input type="text" id="new-dest-addr" placeholder="상세 주소 입력">
+      <button class="btn btn-add" onclick="addRoute()">운행 목록에 추가</button>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="settings-modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>⚙ 시스템 설정 및 사용자 관리</h2>
+        <button onclick="closeSettings()" style="background:none; border:none; font-size:24px; cursor:pointer;">&times;</button>
+      </div>
+
+      <div class="setting-group">
+        <label>승인 방식</label>
+        <label style="font-weight:normal;"><input type="radio" name="autoApprove" value="true" id="approve-auto"> 자동 승인 (코드 입력 시 자동 승인)</label>
+        <label style="font-weight:normal;"><input type="radio" name="autoApprove" value="false" id="approve-manual"> 직접 승인 (관리자 승인필요)</label>
+      </div>
+
+      <div class="setting-group">
+        <label>화물자동차 운수사업법 안전 규정</label>
+        <label style="font-weight:normal;">
+          <input type="checkbox" id="setting-enforceBreak"> 2시간 연속 운행 시 15분 이상 휴식을 강제합니다.
+        </label>
+      </div>
+
+      <div class="setting-group">
+        <label>조직코드 변경</label>
+        <div style="display:flex; gap:10px;">
+          <input type="text" id="setting-orgCode" style="margin:0;">
+          <button class="btn btn-setting" onclick="saveSettings()" style="white-space:nowrap;">설정 저장</button>
+        </div>
+      </div>
+
+      <hr>
+
+      <h3 style="margin-top:0;">👥 소속 기사 관리</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>이름</th>
+            <th>상태</th>
+            <th>경고 횟수</th>
+            <th>관리 액션</th>
+          </tr>
+        </thead>
+        <tbody id="user-management-list"></tbody>
+      </table>
+
+    </div>
+  </div>
+
+  <script>
+    let map;
+    let markers = {}; 
+    let currentDriverId = null;
+    const socket = io();
+
+    function initMap() {
+      const container = document.getElementById('map');
+      const options = { center: new kakao.maps.LatLng(37.3950, 127.1110), level: 5 };
+      map = new kakao.maps.Map(container, options);
+    }
+
+    // 💡 왼쪽 패널 토글(접기/펴기) 기능
+    function togglePanel() {
+      const panel = document.getElementById('left-panel');
+      const btn = document.getElementById('toggle-btn');
+      panel.classList.toggle('collapsed');
+      
+      if (panel.classList.contains('collapsed')) {
+        btn.innerText = '▶';
+        btn.title = '메뉴 펴기';
+      } else {
+        btn.innerText = '◀';
+        btn.title = '메뉴 접기';
+      }
+      
+      // 패널 크기 변경 후 지도 크기 재계산(필수)
+      setTimeout(() => map.relayout(), 300);
+    }
+
+    async function loadDrivers() {
+      const res = await fetch('/api/drivers');
+      const drivers = await res.json();
+      renderLeftPanel(drivers);
+    }
+
+    function renderLeftPanel(drivers) {
+      const listDiv = document.getElementById('driver-list');
+      listDiv.innerHTML = '';
+      
+      drivers.forEach(d => {
+        const isPending = d.status === 'pending';
+        const card = document.createElement('div');
+        card.className = `driver-card ${d.id === currentDriverId ? 'active' : ''}`;
+        card.id = `card-${d.id}`;
+        card.onclick = () => showDriverDetail(d.id);
+        
+        let warningBadge = d.warnings > 0 ? `<span class="status-badge bg-red">경고 ${d.warnings}회</span>` : '';
+
+        card.innerHTML = `
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <strong style="font-size:15px; color:#333;">${d.name} 기사</strong> 
+            <div>
+              ${warningBadge}
+              <span class="status-badge ${isPending ? 'bg-orange' : 'bg-green'}">${isPending ? '승인 대기' : '운행 중'}</span>
+            </div>
+          </div>
+          <small style="color: gray; display:block; margin-top:5px;">조직코드: ${d.orgCode}</small>
+          ${isPending ? `<button class="btn btn-approve" onclick="event.stopPropagation(); approveDriver('${d.id}')">가입 승인하기</button>` : ''}
+        `;
+        listDiv.appendChild(card);
+      });
+    }
+
+    async function approveDriver(id) {
+      if(!confirm('이 기사를 승인하시겠습니까?')) return;
+      await fetch(`/api/drivers/${id}/approve`, { method: 'POST' });
+      loadDrivers();
+    }
+
+    function createCustomMarkerElement(name, id) {
+      const content = document.createElement('div');
+      content.className = 'custom-app-marker';
+      content.id = `marker-${id}`;
+      content.onclick = () => showDriverDetail(id); 
+      content.innerHTML = `<div class="content"><span class="icon">🚚</span><span class="name">${name}</span></div>`;
+      return content;
+    }
+
+    async function showDriverDetail(id) {
+      currentDriverId = id;
+      const res = await fetch('/api/drivers');
+      const drivers = await res.json();
+      const d = drivers.find(x => x.id === id);
+      
+      if(!d) return;
+      if(d.status === 'pending') { alert('승인 대기 중인 기사입니다.'); hideRightPanel(); return; }
+
+      document.querySelectorAll('.driver-card').forEach(c => c.classList.remove('active'));
+      const cardEl = document.getElementById(`card-${id}`);
+      if(cardEl) cardEl.classList.add('active');
+      
+      document.querySelectorAll('.custom-app-marker').forEach(m => m.classList.remove('active'));
+      const markerEl = document.getElementById(`marker-${id}`);
+      if(markerEl) markerEl.classList.add('active');
+
+      document.getElementById('right-panel').style.display = 'flex';
+      document.getElementById('detail-name').innerText = d.name + ' 기사';
+      document.getElementById('detail-drive').innerText = d.driveTime;
+      document.getElementById('detail-rest').innerText = d.restTime;
+      document.getElementById('detail-warnings').innerText = d.warnings + '회 누적';
+      
+      map.panTo(new kakao.maps.LatLng(d.lat, d.lng)); 
+      renderRoutes(d.routes);
+    }
+
+    function hideRightPanel() {
+      document.getElementById('right-panel').style.display = 'none';
+      currentDriverId = null;
+      document.querySelectorAll('.driver-card').forEach(c => c.classList.remove('active'));
+      document.querySelectorAll('.custom-app-marker').forEach(m => m.classList.remove('active'));
+    }
+
+    function renderRoutes(routes) {
+      const routeDiv = document.getElementById('route-list');
+      routeDiv.innerHTML = '';
+      if(routes.length === 0) routeDiv.innerHTML = '<p style="color: gray; text-align:center; padding:20px;">등록된 배차가 없습니다.</p>';
+      
+      routes.forEach(r => {
+        const item = document.createElement('div');
+        item.className = 'route-item';
+        item.innerHTML = `
+            <div><strong style="color:#333;">${r.name}</strong><small>${r.address}</small></div>
+            <button class="btn btn-delete" onclick="deleteRoute('${r.id}')">삭제</button>
+        `;
+        routeDiv.appendChild(item);
+      });
+    }
+
+    async function addRoute() {
+      const name = document.getElementById('new-dest-name').value;
+      const addr = document.getElementById('new-dest-addr').value;
+      if(!name) return alert('목적지 이름을 입력하세요!');
+
+      const res = await fetch(`/api/drivers/${currentDriverId}/routes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, address: addr })
+      });
+      const data = await res.json();
+      renderRoutes(data.routes);
+      document.getElementById('new-dest-name').value = '';
+      document.getElementById('new-dest-addr').value = '';
+    }
+
+    async function deleteRoute(routeId) {
+      if(!confirm('이 배차를 삭제하시겠습니까?')) return;
+      const res = await fetch(`/api/drivers/${currentDriverId}/routes/${routeId}`, { method: 'DELETE' });
+      const data = await res.json();
+      renderRoutes(data.routes);
+    }
+
+    function logout() {
+      if(confirm('정말 로그아웃 하시겠습니까?')) {
+        window.location.href = '/';
+      }
+    }
+
+    async function openSettings() {
+      const setRes = await fetch('/api/settings');
+      const settings = await setRes.json();
+      
+      if(settings.autoApprove) document.getElementById('approve-auto').checked = true;
+      else document.getElementById('approve-manual').checked = true;
+      
+      document.getElementById('setting-enforceBreak').checked = settings.enforceBreak;
+      document.getElementById('setting-orgCode').value = settings.orgCode;
+
+      const drvRes = await fetch('/api/drivers');
+      const drivers = await drvRes.json();
+      const tbody = document.getElementById('user-management-list');
+      tbody.innerHTML = drivers.map(d => `
+        <tr>
+          <td><strong>${d.name}</strong></td>
+          <td><span class="status-badge ${d.status === 'approved' ? 'bg-green' : 'bg-orange'}">${d.status === 'approved' ? '운행 중' : '대기'}</span></td>
+          <td style="color:#e74c3c; font-weight:bold;">${d.warnings || 0}회</td>
+          <td>
+            <button class="btn-warn btn-sm" onclick="warnDriver('${d.id}')">⚠️ 경고</button>
+            <button class="btn btn-delete btn-sm" onclick="kickDriver('${d.id}')">❌ 탈퇴</button>
+          </td>
+        </tr>
+      `).join('');
+
+      document.getElementById('settings-modal').style.display = 'flex';
+    }
+
+    function closeSettings() {
+      document.getElementById('settings-modal').style.display = 'none';
+      loadDrivers(); 
+    }
+
+    async function saveSettings() {
+      const autoApprove = document.getElementById('approve-auto').checked;
+      const enforceBreak = document.getElementById('setting-enforceBreak').checked;
+      const orgCode = document.getElementById('setting-orgCode').value;
+
+      await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ autoApprove, enforceBreak, orgCode })
+      });
+      alert('설정이 안전하게 저장되었습니다!');
+    }
+
+    async function warnDriver(id) {
+      if(!confirm('해당 기사에게 경고를 누적하시겠습니까?')) return;
+      await fetch(`/api/drivers/${id}/warn`, { method: 'POST' });
+      openSettings(); 
+    }
+
+    async function kickDriver(id) {
+      const name = confirm('해당 기사를 조직에서 강제 탈퇴시키겠습니까?\n이 작업은 되돌릴 수 없습니다.');
+      if(!name) return;
+      
+      if(currentDriverId === id) hideRightPanel();
+
+      if(markers[id]) {
+        markers[id].setMap(null);
+        delete markers[id];
+      }
+
+      await fetch(`/api/drivers/${id}`, { method: 'DELETE' });
+      openSettings(); 
+    }
+
+    socket.on('location_update', (drivers) => {
+      drivers.forEach(d => {
+        if(d.status === 'approved' && d.lat !== 0) {
+          const position = new kakao.maps.LatLng(d.lat, d.lng);
+          
+          if (!markers[d.id]) {
+            const markerContent = createCustomMarkerElement(d.name, d.id);
+            const overlay = new kakao.maps.CustomOverlay({
+              position: position,
+              content: markerContent,
+              map: map,
+              yAnchor: 1.15
+            });
+            markers[d.id] = overlay;
+          } else {
+            markers[d.id].setPosition(position);
+          }
+        }
+      });
+    });
+
+    window.onload = () => {
+      initMap();
+      loadDrivers();
+    };
+  </script>
+</body>
+</html>
