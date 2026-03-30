@@ -104,6 +104,35 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => clearInterval(moveInterval));
 });
 
+app.post('/api/drivers/register', (req, res) => {
+  const { email, password, phone, orgCode } = req.body;
+
+  // 1. 조직코드 검증
+  if (orgCode !== appSettings.orgCode) {
+    return res.status(400).json({ success: false, message: '유효하지 않은 조직코드입니다.' });
+  }
+
+  // 2. 관리자의 설정에 따라 '승인(approved)' 또는 '대기(pending)' 상태 결정
+  const newStatus = appSettings.autoApprove ? 'approved' : 'pending';
+
+  // 3. 임시 DB에 새 기사 추가
+  const newDriver = {
+    id: "d" + Date.now(),
+    name: "신규기사(" + phone.slice(-4) + ")", // 임시 이름 부여
+    email: email,
+    phone: phone,
+    orgCode: orgCode,
+    status: newStatus,
+    lat: 0, lng: 0, driveTime: "0시간", restTime: "0분", warnings: 0, routes: []
+  };
+  
+  drivers.push(newDriver);
+  console.log(`✅ 새 기사 가입 요청: ${email} / 상태: ${newStatus}`);
+
+  // 4. 앱으로 가입 결과와 상태 반환
+  res.json({ success: true, status: newStatus });
+});
+
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`✅ 관리자 서버가 http://localhost:${PORT} 에서 실행 중입니다.`);
